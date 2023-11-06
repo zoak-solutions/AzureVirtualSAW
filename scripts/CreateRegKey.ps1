@@ -3,7 +3,11 @@
 # Stop on errors
 $ErrorActionPreference = 'Stop'
 # Load config items
-. .\SAWDeployerConfigItems.ps1
+if (!(Test-Path .\config\SAWDeployerConfigItems.ps1)) {
+    Write-Error -Message "..\config\SAWDeployerConfigItems.ps1 not found. Exiting." -ErrorAction Stop
+} else {
+    . .\config\SAWDeployerConfigItems.ps1
+}
 ######################################################
 # Create Azure VDI registration key
 $parameters = @{
@@ -26,3 +30,5 @@ Write-Host "##################################"
 Write-Host "If you want to create Microsoft Entra joined session hosts, we only support this using the Azure portal with the Azure Virtual Desktop service. You can't use PowerShell to create Microsoft Entra joined session hosts."
 Write-Host "Create and register session hosts with the Azure Virtual Desktop service, see:"
 Write-Host "https://learn.microsoft.com/en-us/azure/virtual-desktop/add-session-hosts-host-pool?tabs=powershell%2Ccmd#create-and-register-session-hosts-with-the-azure-virtual-desktop-service"
+Write-Host "##################################"
+

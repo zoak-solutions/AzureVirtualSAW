@@ -3,7 +3,11 @@
 # Stop on errors
 $ErrorActionPreference = 'Stop'
 # Load config items
-. .\SAWDeployerConfigItems.ps1
+if (!(Test-Path .\config\SAWDeployerConfigItems.ps1)) {
+    Write-Error -Message "..\config\SAWDeployerConfigItems.ps1 not found. Exiting." -ErrorAction Stop
+} else {
+    . .\config\SAWDeployerConfigItems.ps1
+}
 ######################################################
 # Consideration items
 # Host pool -> RDP properties ->  Entra Single Sign on, Credential Security Provider, !!! Default is not entra single sign on

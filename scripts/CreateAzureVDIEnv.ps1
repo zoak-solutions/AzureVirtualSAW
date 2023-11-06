@@ -3,11 +3,15 @@
 # Stop on errors
 $ErrorActionPreference = 'Stop'
 # Load config items
-. .\SAWDeployerConfigItems.ps1
+if (!(Test-Path .\config\SAWDeployerConfigItems.ps1)) {
+    Write-Error -Message "..\config\SAWDeployerConfigItems.ps1 not found. Exiting." -ErrorAction Stop
+} else {
+    . .\config\SAWDeployerConfigItems.ps1
+}
 ######################################################
 # Create a Resource Group
 # Create resource group if it doesn't exist
-if (!(Get-AzResourceGroup -Name $SAWResourceGroupName)) {
+if (!(Get-AzResourceGroup -Name $SAWResourceGroupName -ErrorAction SilentlyContinue)) {
     $parameters = @{
         Name     = $SAWResourceGroupName
         Location = $SAWLocation
@@ -30,7 +34,7 @@ $parameters = @{
     Location              = $SAWLocation
 }
 # Create host pool if it doesn't exist
-if (!(Get-AzWvdHostPool -Name $SAWHostPoolName -ResourceGroupName $SAWResourceGroupName)) {
+if (!(Get-AzWvdHostPool -Name $SAWHostPoolName -ResourceGroupName $SAWResourceGroupName -ErrorAction SilentlyContinue)) {
     New-AzWvdHostPool @parameters
 }
 else {
@@ -45,7 +49,7 @@ $parameters = @{
     Location          = $SAWLocation
 }
 # Create workspace if it doesn't exist
-if (!(Get-AzWvdWorkspace -Name $SAWWorkspaceName -ResourceGroupName $SAWResourceGroupName)) {
+if (!(Get-AzWvdWorkspace -Name $SAWWorkspaceName -ResourceGroupName $SAWResourceGroupName -ErrorAction SilentlyContinue)) {
     New-AzWvdWorkspace @parameters
 }
 else {
@@ -63,7 +67,7 @@ $parameters = @{
     ApplicationGroupType = $SAWPreferredAppGroupType
 }
 # Create application group if it doesn't exist
-if (!(Get-AzWvdApplicationGroup -Name $SAWAppGroupName -ResourceGroupName $SAWResourceGroupName)) {
+if (!(Get-AzWvdApplicationGroup -Name $SAWAppGroupName -ResourceGroupName $SAWResourceGroupName -ErrorAction SilentlyContinue)) {
     New-AzWvdApplicationGroup @parameters
 }
 else {
@@ -75,7 +79,7 @@ Get-AzWvdApplicationGroup -Name $SAWAppGroupName -ResourceGroupName $SAWResource
 $AppGroupPath = (Get-AzWvdApplicationGroup -Name $SAWAppGroupName -ResourceGroupName $SAWResourceGroupName).Id
 
 # If the workspace doesn't have the application group, add it
-if (!(Get-AzWvdWorkspace -Name $SAWWorkspaceName -ResourceGroupName $SAWResourceGroupName).ApplicationGroupReferences) {
+if (!(Get-AzWvdWorkspace -Name $SAWWorkspaceName -ResourceGroupName $SAWResourceGroupName -ErrorAction SilentlyContinue).ApplicationGroupReferences) {
     $parameters = @{
         Name                      = $SAWWorkspaceName
         ResourceGroupName         = $SAWResourceGroupName
@@ -89,7 +93,7 @@ else {
 Get-AzWvdWorkspace -Name $SAWWorkspaceName -ResourceGroupName $SAWResourceGroupName | FL *
 
 # Create Entra User Group if it doesn't exist
-if (!(Get-AzADGroup -DisplayName $SAWUserGroupName)) {
+if (!(Get-AzADGroup -DisplayName $SAWUserGroupName -ErrorAction SilentlyContinue)) {
     $parameters = @{
         DisplayName     = $SAWUserGroupName
         MailNickname    = $SAWUserGroupName
@@ -109,7 +113,7 @@ $parameters = @{
     ResourceType       = $SAWAppGroupResourceType
 }
 # Assign user group to application group if it isn't already assigned
-if (!(Get-AzRoleAssignment -ResourceGroupName $SAWResourceGroupName -ObjectID $userGroupId -RoleDefinitionName $SAWVDIGroupRole -ResourceName $SAWAppGroupName -ResourceType $SAWAppGroupResourceType)) {
+if (!(Get-AzRoleAssignment -ResourceGroupName $SAWResourceGroupName -ObjectID $userGroupId -RoleDefinitionName $SAWVDIGroupRole -ResourceName $SAWAppGroupName -ResourceType $SAWAppGroupResourceType -ErrorAction SilentlyContinue)) {
     New-AzRoleAssignment @parameters
 }
 else {
