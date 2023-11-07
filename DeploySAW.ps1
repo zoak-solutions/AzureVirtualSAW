@@ -12,13 +12,60 @@ param (
 )
 $ErrorActionPreference = 'Stop'
 Write-Host "### Start at: $(Get-Date) ###"
+# Function to copy a file removing prefix in filname and replacing with a new prefix
+function Copy-FileWithNewPrefix {
+    param (
+        [Parameter(Mandatory)]
+        [string]$SourceFile,
+        [Parameter(Mandatory)]
+        [string]$DestinationFile,
+        [Parameter(Mandatory)]
+        [string]$OldPrefix,
+        [Parameter(Mandatory)]
+        [string]$NewPrefix
+    )
+    $NewFileName = $DestinationFile -replace $OldPrefix, $NewPrefix
+    Copy-Item -Path $SourceFile -Destination $NewFileName
+}
+
 # Check for SAWDeployerConfigItems.ps1
-if (!(Test-Path .\config\SAWDeployerConfigItems.ps1)) {
-    Write-Error -Message ".\config\SAWDeployerConfigItems.ps1 not found. Exiting." -ErrorAction Stop
-} else {
+if (!(Test-Path .\config\SAWDeployerConfigItems.ps1) -and (Test-Path .\config\EXAMPLE_SAWDeployerConfigItems.ps1)) {
+    write-host "Only the EXAMPLE_SAWDeployerConfigItems.ps1 file found in ./config, shall I make a copy of this as ./config/SAWDeployerConfigItems.ps1 for use?:"  -Confirm
+    if ($confirmation -eq 'y') {
+        Copy-FileWithNewPrefix .\config\EXAMPLE_SAWDeployerConfigItems.ps1 .\config\SAWDeployerConfigItems.ps1 'EXAMPLE_' ''
+    }
+    else {
+        Write-Error -Message "No appropriate config file in ./config dir. Exiting." -ErrorAction Stop
+    }
+}
+else {
     . .\config\SAWDeployerConfigItems.ps1
 }
 
+function Install-DependentModule {
+    param (
+        [Parameter(Mandatory = $true)][string]$ModuleName
+    )
+    if (!(Get-Module -ListAvailable -Name $ModuleName)) {
+        Write-Host "Installing module: $ModuleName"
+        Install-Module -Name $ModuleName -Repository PSGallery -Force -Scope CurrentUser
+    }
+    else {
+        Write-Host "Module: $ModuleName installed already."
+    }
+}
+
+function Login-Azure() {
+    # Bug on local machine here, https://learn.microsoft.com/en-us/answers/questions/1299863/how-to-fix-method-get-serializationsettings-does-n
+    $context = Get-AzContext  
+  
+    if (!$context) {  
+        Connect-AzAccount
+    }   
+    else {  
+        Write-Host " Already connected"  
+    }  
+}  
 function Destroy-SAWEnvironment {
     param (
         [Parameter(Mandatory)]
@@ -35,7 +82,20 @@ function Destroy-SAWEnvironment {
     }
 }
 
-# Check for -Destroy switch and -NoDeploy switch
+# MAIN
+Write-Host "Checking for required modules..."
+$ModuleDependencies = @('Az')
+Write-Host("Current Execution Policy: ")
+Get-ExecutionPolicy -Scope CurrentUser
+foreach ($Module in $ModuleDependencies) {
+    Install-DependentModule -ModuleName $Module
+}
+
+# Login to Azure
+Write-Host "Logging into Azure if not already logged in..."
+Login-Azure
+
+# Run with switches controlling what to do
 if ($Destroy) {
     Destroy-SAWEnvironment -RGToDestroy $SAWResourceGroupName
 } if ($NoDeploy) {
@@ -45,19 +105,22 @@ if ($Destroy) {
     Exit
 } if ($SkipVDIEnv) {
     Write-Host "Skipping VDIEnv deploy"
-} else {
+}
+else {
     Write-Host "Deploying SAW VDI environment..."
     .\scripts\CreateAzureVDIEnv.ps1
     Write-Host "SAW environment deployed."
 } if ($SkipNetwork) {
     Write-Host "Skipping network deploy"
-} else {
+}
+else {
     Write-Host "Deploying SAW network..."
     .\scripts\CreateSAWNets.ps1
     Write-Host "SAW network deployed."
 } if ($SkipRegKey) {
     Write-Host "Skipping Reg Key create"
-} else {
+}
+else {
     Write-Host "Creating session host Registration Key.."
     .\scripts\CreateRegKey.ps1
     Write-Host "SAW Registration Key Created"

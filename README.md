@@ -33,7 +33,7 @@ We (ZOAK Solutions) have numerous clients and our own systems that require:
 ### Implmentation tools/dependencies
 
 - [PowerShell](https://learn.microsoft.com/en-us/powershell/)
-  - [Azure PowerShell Az module](https://learn.microsoft.com/en-us/powershell/azure): Azure PowerShell is a collection of modules for managing Azure resources from PowerShell
+  - [Azure PowerShell Az module](https://learn.microsoft.com/en-us/powershell/azure): Azure PowerShell is a collection of modules for managing Azure resources from PowerShell, script currently installs the enGet-
 - [Azure](https://azure.microsoft.com/en-au/)
 - [CloudShell](https://docs.microsoft.com/en-us/azure/cloud-shell/overview)
   - Tested in CloudShell, but can be run in any PowerShell environment
@@ -48,11 +48,36 @@ We (ZOAK Solutions) have numerous clients and our own systems that require:
 
 ### Prerequisites
 
-- PowerShell/CloudShell environment configured and authenticated with appropriate permissions to create resources in Azure
-  - See: <https://learn.microsoft.com/en-us/azure/virtual-desktop/deploy-azure-virtual-desktop?tabs=powershell#prerequisites>
+See:
+
+- <https://learn.microsoft.com/en-us/azure/virtual-desktop/deploy-azure-virtual-desktop?tabs=powershell#prerequisites>
 - <https://learn.microsoft.com/en-us/azure/firewall/deploy-ps#prerequisites>
 
-#### Example PowerShell environment set up
+### Deploy an Azure SAW env
+
+1. Clone this repo
+    - `git clone git@github.com:zoak-solutions/AzureVirtualSAW.git`
+2. Make a non-example config file `cp ./config/EXAMPLE_SAWDeployerConfigItems.ps1 ./config/SAWDeployerConfigItems.ps1` file with your desired configuration
+    - Note that `./config/SAWDeployerConfigItems.ps1` is ignored by git, so you can make changes to this file without it being tracked by git
+
+3. Run the `DeploySAW.ps1` script
+    - Optional Parameters:
+        - `-Destroy`: Destroy all resources in and the resource group itself before recreating (If you make changes to config and want them applied, excepting outbound FW rules which are recreated on every run).
+
+#### Example usage
+
+```powershell
+
+git clone git@github.com:zoak-solutions/AzureVirtualSAW.git
+cd AzureVirtualSAW
+cp ./config/EXAMPLE_SAWDeployerConfigItems.ps1 ./config/SAWDeployerConfigItems.ps1
+notepad ./config/SAWDeployerConfigItems.ps1
+.\DeploySAW.ps1
+```
+
+#### Troublshooting
+
+- Authenticaiton and module installation
 
 ```powershell
 # Allow PowerShell to run scripts
@@ -63,29 +88,6 @@ Update-Module -Name Az -Force
 # Authenticate to Azure
 Connect-AzAccount
 ```
-
-### Deploy an Azure SAW env
-
-1. Clone this repo
-    - `git clone git@github.com:zoak-solutions/AzureVirtualSAW.git`
-2. Review and update the `SAWDeployerConfigItems.ps1` file with your desired configuration
-
-3. Run the `DeploySAW.ps1` script
-    - Optional Parameters:
-        - `-Destroy`: Destroy all resources in and the resource group itself before recreating (If you make changes to config and want them applied, excepting outbound FW rules which are recreated on every run).
-
-#### Example
-
-```powershell
-Install-Module -Name Az -Repository PSGallery -Force
-Update-Module -Name Az -Force
-Connect-AzAccount
-git clone git@github.com:zoak-solutions/AzureVirtualSAW.git
-cd AzureVirtualSAW
-vim SAWDeployerConfigItems.ps1
-.\DeploySAW.ps1 -Destroy
-```
-
 <!-- ROADMAP -->
 ## Roadmap
 

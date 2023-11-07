@@ -59,3 +59,9 @@ $SAWOutboundAllowedIP80443 = @{
     'Azure Instance Metadata service' = "169.254.169.254/32"
     'Session host monitoring'         = "168.63.129.16/32"	
 }
+
+# Array of SAW users to add to the SAW User Group
+$SAWAccessGroupMembers = @(
+    'john.smith@zoak.solutions',
+    'billy.bob@zoak.solutions'
+)
