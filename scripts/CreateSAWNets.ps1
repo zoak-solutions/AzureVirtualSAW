@@ -2,11 +2,13 @@
 # Deploy a SAW environment in Azure
 # Stop on errors
 $ErrorActionPreference = 'Stop'
+$Priority = 200
 # Load config items
 if (!(Test-Path .\config\SAWDeployerConfigItems.ps1)) {
-    Write-Error -Message "..\config\SAWDeployerConfigItems.ps1 not found. Exiting." -ErrorAction Stop
-} else {
-    . .\config\SAWDeployerConfigItems.ps1
+  Write-Error -Message "..\config\SAWDeployerConfigItems.ps1 not found. Exiting." -ErrorAction Stop
+}
+else {
+  . .\config\SAWDeployerConfigItems.ps1
 }
 ######################################################
 # Consideration items
@@ -51,6 +53,10 @@ else {
 # Save the firewall private IP address for future use
 $AzfwPrivateIP = $Azfw.IpConfigurations.privateipaddress
 Write-host "Azure FW Private IP: $AzfwPrivateIP"
+# Update VNet to use Azure Firewall as DNS proxy
+$dnsServers = @($AzfwPrivateIP)
+$SAWVnet.DhcpOptions.DnsServers = $dnsServers
+$SAWVnet | Set-AzVirtualNetwork
 
 # Create a route table, with BGP route propagation disabled if it doesn't exist
 if (!(Get-AzRouteTable -Name $SAWFWRouteTableName -ResourceGroupName $SAWResourceGroupName -ErrorAction SilentlyContinue)) {
@@ -80,43 +86,104 @@ else {
   Write-Host "Route table already associated to subnet, skipping..."
 }
 
-# Allow outbound internet access for the SAWs, iterating through the $SAWOutboundAllowedHostsHTTP hashtable and creating an Application Rule for each, only if it doesn't already exist
-$FWAppRuleArrayHTTPAllow = @()
-$SAWOutboundAllowedHostsHTTP.GetEnumerator() | ForEach-Object {
-  Write-Host "Creating Application Rule for $_"
-  $AppRule = New-AzFirewallApplicationRule -Name $_.Key -SourceAddress $SAWSubNetRange -Protocol http, https -TargetFqdn $_.Value
-  $FWAppRuleArrayHTTPAllow += $AppRule
+# Function to deploy FW rule collection to Azure Firewall taking both the rule collection and the Azure Firewall object as parameters
+function Set-ClassicFWRuleCollection {
+  param (
+    [Parameter(Mandatory = $true)]
+    [Object] $NewRuleCollection,
+    [Parameter(Mandatory = $false)]
+    [Object] $ExistingRuleCollection,
+    [Parameter(Mandatory = $true)]
+    [PSAzureFirewall] $AzureFirewall,
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullOrEmpty()]
+    [ValidateSet('Application', 'Network')]
+    [String]$RuleTypeRule
+  )
+  # Check if the rule collection already exists, if it does, remove it
+  if ($ExistingRuleCollection) {
+    Write-Host "$RuleType Rule Collection already exists, checking if differs from local config file"
+    if (Compare-Object $ExstingAppRule.Rules $NewRuleCollection.Rules) {
+      Write-Host "Difference found:"
+      Compare-Object $ExstingAppRules $RuleCollection.Rules
+      Write-Host "Azfw $(ExitingRuleCollection.Name) differs from local $($NewRuleCollection.Name), removing and replacing."
+      if ($RuleTypeRule -eq 'Application') {
+        $AzureFirewall.RemoveApplicationRuleCollectionByName($ExistingRuleCollection.Name)
+        $AzureFirewall.ApplicationRuleCollections.Add($NewRuleCollection)
+      }
+      elseif ($RuleTypeRule -eq 'Application') {
+        $AzureFirewall.RemoveNetworkRuleCollectionByName($ExistingRuleCollection.Name)
+        $AzureFirewall.NetworkRuleCollections.Add($NewRuleCollection)
+      }
+      else {
+        Write-Error -Message "There is a bug inside...me!" -ErrorAction Stop
+      }
+    }
+    else {
+      Write-Host "$RuleType Rule Collection matches local config file, skipping."
+    }
+  }
+  else {
+    Write-Host "$RuleType Rule Collection doesn't exist, creating."
+    if ($RuleTypeRule -eq 'Application') {
+      $AzureFirewall.ApplicationRuleCollections.Add($NewRuleCollection)
+    }
+    elseif ($RuleTypeRule -eq 'Application') {
+      $AzureFirewall.NetworkRuleCollections.Add($NewRuleCollection)
+    }
+    else {
+      Write-Error -Message "There is a bug inside...me!" -ErrorAction Stop
+    }
+    Set-AzFirewall -AzureFirewall $AzureFirewall
+  }
+  Write-Host "Azure Firewall $RuleTypeRule Rule Collection updates completed."
 }
-# Create or replace the Application Rule Collection with the rules
-# Check if the Application Rule Collection already exists, if it does, remove it
-if ($Azfw.ApplicationRuleCollections.Name -contains $SAWFWAppRuleCollName) {
-  Write-Host "Application Rule Collection already exists and associated, removing and replacing."
-  $Azfw.RemoveApplicationRuleCollectionByName($SAWFWAppRuleCollName)
-}
-else {
-  Write-Host "Application Rule Collection doesn't exist, creating."
-}
-# Remove-AzFirewallPolicyRuleCollectionGroup -Name $SAWFWAppRuleCollName -ResourceGroupName $SAWResourceGroupName -AzureFirewallPolicyName $AzureFWName -Force -ErrorAction Continue
-$HTTPAppRuleCollection = New-AzFirewallApplicationRuleCollection -Name $SAWFWAppRuleCollName -Priority 200 -ActionType Allow -Rule $FWAppRuleArrayHTTPAllow
-$Azfw.ApplicationRuleCollections.Add($HTTPAppRuleCollection)
-Set-AzFirewall -AzureFirewall $Azfw
 
-# Create Network Rules for the SAWs from SAWOutboundAllowedIP80443 hashtable
-$FWNetworkRuleArray80443Allow = @()
-$SAWOutboundAllowedIP80443.GetEnumerator() | ForEach-Object {
-  Write-Host "Creating Network Rule for $_"
-  $NetworkRule = New-AzFirewallNetworkRule -Name $_.Key -SourceAddress $SAWSubNetRange -Protocol TCP -DestinationAddress $_.Value -DestinationPort @("80", "443")
-  $FWNetworkRuleArray80443Allow += $NetworkRule
+# Funtion to build application rule collection from hashtable
+function Set-RuleCollectionFromConfig {
+  param (
+    [Parameter(Mandatory = $true)]
+    [array] $ConfigRules,
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullOrEmpty()]
+    [ValidateSet('Application', 'Network')]
+    [String]$RuleType
+  )
+  $Rules = @()
+  if ($RuleType -eq 'Application') {
+    $NewRuleFunction = "New-AzFirewallApplicationRule"
+    $NewCollectionFunction = "New-AzFirewallApplicationRuleCollection -Name $SAWFWAppRuleCollName"
+  }
+  elseif ($RuleType -eq 'Network') {
+    $NewRuleFunction = "New-AzFirewallNetworkRule"
+    $NewCollectionFunction = "New-AzFirewallNetworkRuleCollection -Name $SAWFWNetRuleCollName"
+  }
+  else {
+    Write-Error -Message "There is a bug inside...me!" -ErrorAction Stop
+  }
+  foreach ( $rule in $ConfigRules ) {
+    Write-Host "Creating App Rule for $rule"
+    $Rules += Invoke-Expression "$NewRuleFunction $rule"
+  }
+  $RuleCollection = Invoke-Expression "$NewRuleCollectionFunction -Priority $Priority -ActionType Allow -Rule $Rules"
+  return $RuleCollection
 }
-# Check if the Network Rule Collection already exists, if it does, remove it
-if ($Azfw.NetworkRuleCollections.Name -contains $SAWFWNetRuleCollName) {
-  Write-Host "Network Rule Collection already exists, removing and replacing."
-  $Azfw.RemoveNetworkRuleCollectionByName($SAWFWNetRuleCollName)
+# Create App Rules
+$SAWFWConfigAppRules = Set-RuleCollectionFromConfig -ConfigRules $SAWFWAppRules -RuleType Application
+if ($Azfw.ApplicationRuleCollections.Name -contains $SAWFWAppRuleCollName) {
+  Set-ClassicFWRuleCollection -NewRuleCollection $SAWFWConfigAppRules -ExistingRuleCollection $Azfw.GetApplicationRuleCollectionByName($SAWFWAppRuleCollName) -AzureFirewall $Azfw -RuleType Application
 }
 else {
-  Write-Host "Network Rule Collection doesn't exist, creating."
+  Set-ClassicFWRuleCollection -NewRuleCollection $SAWFWConfigAppRules -AzureFirewall $Azfw -RuleType Application
 }
-#Remove-AzFirewallPolicyRuleCollectionGroup -Name $SAWFWNetRuleCollName -ResourceGroupName $SAWResourceGroupName -AzureFirewallPolicyName $AzureFWName -Force -ErrorAction Continue
-$NetworkRuleCollection80443Allow = New-AzFirewallNetworkRuleCollection -Name $SAWFWNetRuleCollName -Priority 201 -ActionType Allow -Rule $FWNetworkRuleArray80443Allow
-$Azfw.NetworkRuleCollections.Add($NetworkRuleCollection80443Allow)
+# Create Network Rules
+$SAWFWConfigNetRules = Set-RuleCollectionFromConfig -ConfigRules $SAWFWNetRules -RuleType Network
+if ($Azfw.NetworkRuleCollections.Name -contains $SAWFWNetRuleCollName) {
+  Set-ClassicFWRuleCollection -NewRuleCollection $SAWFWConfigNetRules -ExistingRuleCollection $Azfw.GetNetworkRuleCollectionByName($SAWFWNetRuleCollName) -AzureFirewall $Azfw -RuleType Network
+}
+else {
+  Set-ClassicFWRuleCollection -NewRuleCollection $SAWFWConfigNetRules -AzureFirewall $Azfw -RuleType Network
+}
+# Enable DNS proxy
+$azFw.DNSEnableProxy = $true
 Set-AzFirewall -AzureFirewall $Azfw
