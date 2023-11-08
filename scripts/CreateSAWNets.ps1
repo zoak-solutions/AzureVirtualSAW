@@ -2,7 +2,6 @@
 # Deploy a SAW environment in Azure
 # Stop on errors
 $ErrorActionPreference = 'Stop'
-$Priority = 200
 # Load config items
 if (!(Test-Path .\config\SAWDeployerConfigItems.ps1)) {
   Write-Error -Message "..\config\SAWDeployerConfigItems.ps1 not found. Exiting." -ErrorAction Stop
@@ -50,6 +49,10 @@ else {
   $Azfw = Get-AzFirewall -Name $AzureFWName -ResourceGroupName $SAWResourceGroupName
 }
 
+# Enable DNS proxy
+$azFw.DNSEnableProxy = $true
+Set-AzFirewall -AzureFirewall $Azfw
+
 # Save the firewall private IP address for future use
 $AzfwPrivateIP = $Azfw.IpConfigurations.privateipaddress
 Write-host "Azure FW Private IP: $AzfwPrivateIP"
@@ -86,114 +89,47 @@ else {
   Write-Host "Route table already associated to subnet, skipping..."
 }
 
-# Function to deploy FW rule collection to Azure Firewall taking both the rule collection and the Azure Firewall object as parameters
-function Set-ClassicFWRuleCollection {
+# Function to create a Firewall Policy 
+function New-FirewallPolicy {
   param (
     [Parameter(Mandatory = $true)]
-    [Object] $NewRuleCollection,
-    [Parameter(Mandatory = $false)]
-    [Object] $ExistingRuleCollection,
+    [String] $PolicyName,
     [Parameter(Mandatory = $true)]
-    [PSAzureFirewall] $AzureFirewall,
+    [String] $ResourceGroupName,
     [Parameter(Mandatory = $true)]
-    [ValidateNotNullOrEmpty()]
-    [ValidateSet('Application', 'Network')]
-    [String]$RuleTypeRule
+    [String] $Location,
+    [Parameter(Mandatory = $true)]
+    [PSAzureFirewall] $ExistingSAWFW
   )
-  # Check if the rule collection already exists, if it does, remove it
-  if ($ExistingRuleCollection) {
-    Write-Host "$RuleType Rule Collection already exists, checking if differs from local config file"
-    if (Compare-Object $ExstingAppRule.Rules $NewRuleCollection.Rules) {
-      Write-Host "Difference found:"
-      Compare-Object $ExstingAppRules $RuleCollection.Rules
-      Write-Host "Azfw $(ExitingRuleCollection.Name) differs from local $($NewRuleCollection.Name), removing and replacing."
-      if ($RuleTypeRule -eq 'Application') {
-        $AzureFirewall.RemoveApplicationRuleCollectionByName($ExistingRuleCollection.Name)
-        $AzureFirewall.ApplicationRuleCollections.Add($NewRuleCollection)
-      }
-      elseif ($RuleTypeRule -eq 'Application') {
-        $AzureFirewall.RemoveNetworkRuleCollectionByName($ExistingRuleCollection.Name)
-        $AzureFirewall.NetworkRuleCollections.Add($NewRuleCollection)
-      }
-      else {
-        Write-Error -Message "There is a bug inside...me!" -ErrorAction Stop
-      }
-    }
-    else {
-      Write-Host "$RuleType Rule Collection matches local config file, skipping."
-    }
+  Write-Host "Creating Firewall Policy... need for compare / create"
+  $NewAZFWPolicy = New-AzFirewallPolicy -Name "$PolicyName-New" -ResourceGroupName $ResourceGroupName -Location $Location
+  $SAWFW_AppRuleArray = foreach ($AppRuleEntry in $SAWFWAppRules) { New-AzFirewallPolicyApplicationRule $AppRuleEntry }
+  $SAWFW_AppRuleColl = New-AzFirewallApplicationRuleCollection -Name $SAWFWAppRuleCollName -Priority 100 -Rule $SAWFW_AppRuleArray -ActionType Allow
+  $SAWFW_NetRuleArray = foreach ($NetRuleEntry in $SAWFWNetRules) { New-AzFirewallPolicyNetworkRule $NetRuleEntry }
+  $SAWFW_NetRuleColl = New-AzFirewallNetworkRuleCollection -Name $SAWFWNetRuleCollName -Priority 100 -Rule $SAWFW_NetRuleArray -ActionType Allow
+  $SAWFW_RCGroup = New-AzFirewallPolicyRuleCollectionGroup -Name "$SAWFWPolicyName-RCGroup" -RuleCollection @($SAWFW_AppRuleColl, $SAWFW_NetRuleColl) -Priority 100 -FirewallPolicyObject $NewAZFWPolicy
+  $NewAZFWPolicy.RuleCollectionGroups = $SAWFW_RCGroup
+  Write-Host "Comparing local Firewall Policy... to that on in Azure named $PolicyName [RG: $ResourceGroupName] (might be naive...)"
+  if (!(Get-AzFirewallPolicy -Name $PolicyName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue)) {
+    Write-Host "$PolicyName [RG: $ResourceGroupName] not found, deploying our local one!"
+    # Deploy the firewall policy
+    $NewAZFWPolicy.Name = $PolicyName
+    $ExistingSAWFW.Policy = $NewAZFWPolicy
+    Set-AzFirewall -AzureFirewall $ExistingSAWFW
+  }
+  elseif (!(Compare-Object -ReferenceObject $ExistingSAWFW.Policy -DifferenceObject $NewAZFWPolicy)) {
+    Write-Host "$PolicyName [RG: $ResourceGroupName] found, differences detected, deploying our local one!"
+    Write-Host "Differences detected:"
+    Compare-Object -ReferenceObject $ExistingSAWFW.Policy -DifferenceObject $NewAZFWPolicy | Format-Table
+    # Deploy the updated firewall policy
+    Remove-AzFirewallPolicy -Name $PolicyName -ResourceGroupName $ResourceGroupName
+    $ExistingSAWFW.FirewallPolicy = $NewAZFWPolicy
+    Set-AzFirewall -AzureFirewall $ExistingSAWFW 
   }
   else {
-    Write-Host "$RuleType Rule Collection doesn't exist, creating."
-    if ($RuleTypeRule -eq 'Application') {
-      $AzureFirewall.ApplicationRuleCollections.Add($NewRuleCollection)
-    7}
-    elseif ($RuleTypeRule -eq 'Application') {
-      $AzureFirewall.NetworkRuleCollections.Add($NewRuleCollection)
-    }
-    else {
-      Write-Error -Message "There is a bug inside...me!" -ErrorAction Stop
-    }
-    Set-AzFirewall -AzureFirewall $AzureFirewall
+    Write-Host "$PolicyName [RG: $ResourceGroupName] found, no changes detected, skipping deployment!"
   }
-  Write-Host "Azure Firewall $RuleTypeRule Rule Collection updates completed."
 }
 
-# Funtion to build application rule collection from hashtable
-function New-RuleCollection {
-  param (
-    [Parameter(Mandatory = $true)]
-    [array]$ConfigRules,
-    [Parameter(Mandatory = $true)]
-    [ValidateNotNullOrEmpty()]
-    [ValidateSet('Application', 'Network')]
-    [String]$RuleType
-  )
-  if ($RuleType -eq 'Application') {
-    $NewRuleFunction = "New-AzFirewallApplicationRule"
-    $NewCollectionFunction = 'New-AzFirewallApplicationRuleCollection -Name ' + $SAWFWAppRuleCollName + '-Priority ' + $Priority + ' -ActionType Allow -Rule'
-  }
-  elseif ($RuleType -eq 'Network') {
-    $NewRuleFunction = "New-AzFirewallNetworkRule"
-    $NewCollectionFunction = 'New-AzFirewallNetworkRuleCollection -Name ' + $SAWFWNetRuleCollName + ' -Priority ' + $Priority + ' -ActionType Allow -Rule'
-  }
-  else {
-    Write-Error -Message "There is a bug inside...me!" -ErrorAction Stop
-  }
-  function New-FWRuleCollection {
-    $RuleArray = foreach ($rule in $ConfigRules) {
-      $result = Invoke-Command "$NewRuleFunction $rule"
-      Write-Host "Invoke command result type: $result.GetType()"
-      $result
-    }
-    Write-Host "RuleArray is: $RuleArray.GetType()"
-    Write-Host "RuleArray count: $RuleArray.count"
-    $RuleArray
-  }
-  $RuleCollection = (New-FWRuleCollection)
-  Write-Host "Return Type from New-FWRuleCollection: $RuleCollection.GetType()"
-  Write-Host "LENGTH?: $RuleCollection.count"
-  Write-Host "Contents?: $RuleCollection"
-  $Generated_Collection = Invoke-Expression "$NewCollectionFunction $RuleCollection"
-}
-
-# Create App Rules
-$SAWFWConfigAppRules = New-RuleCollection -ConfigRules $SAWFWAppRules -RuleType Application
-Write-Host "SAWFWConfigAppRules: $SWFWConfigAppRules"
-if ($Azfw.ApplicationRuleCollections.Name -contains $SAWFWAppRuleCollName) {
-  Set-ClassicFWRuleCollection -NewRuleCollection $SAWFWConfigAppRules -ExistingRuleCollection $Azfw.GetApplicationRuleCollectionByName($SAWFWAppRuleCollName) -AzureFirewall $Azfw -RuleType Application
-}
-else {
-  Set-ClassicFWRuleCollection -NewRuleCollection $SAWFWConfigAppRules -AzureFirewall $Azfw -RuleType Application
-}
-# Create Network Rules
-$SAWFWConfigNetRules = New-RuleCollection -ConfigRules $SAWFWNetRules -RuleType Network
-if ($Azfw.NetworkRuleCollections.Name -contains $SAWFWNetRuleCollName) {
-  Set-ClassicFWRuleCollection -NewRuleCollection $SAWFWConfigNetRules -ExistingRuleCollection $Azfw.GetNetworkRuleCollectionByName($SAWFWNetRuleCollName) -AzureFirewall $Azfw -RuleType Network
-}
-else {
-  Set-ClassicFWRuleCollection -NewRuleCollection $SAWFWConfigNetRules -AzureFirewall $Azfw -RuleType Network
-}
-# Enable DNS proxy
-$azFw.DNSEnableProxy = $true
-Set-AzFirewall -AzureFirewall $Azfw
+# Create FW Policy deploying if required
+New-FirewallPolicy -PolicyName $SAWFWPolicyName -ResourceGroupName $SAWResourceGroupName -Location $SAWLocation
