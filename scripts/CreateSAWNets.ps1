@@ -127,7 +127,7 @@ function Set-ClassicFWRuleCollection {
     Write-Host "$RuleType Rule Collection doesn't exist, creating."
     if ($RuleTypeRule -eq 'Application') {
       $AzureFirewall.ApplicationRuleCollections.Add($NewRuleCollection)
-    }
+    7}
     elseif ($RuleTypeRule -eq 'Application') {
       $AzureFirewall.NetworkRuleCollections.Add($NewRuleCollection)
     }
@@ -140,36 +140,46 @@ function Set-ClassicFWRuleCollection {
 }
 
 # Funtion to build application rule collection from hashtable
-function Set-RuleCollectionFromConfig {
+function New-RuleCollection {
   param (
     [Parameter(Mandatory = $true)]
-    [array] $ConfigRules,
+    [array]$ConfigRules,
     [Parameter(Mandatory = $true)]
     [ValidateNotNullOrEmpty()]
     [ValidateSet('Application', 'Network')]
     [String]$RuleType
   )
-  $Rules = @()
   if ($RuleType -eq 'Application') {
     $NewRuleFunction = "New-AzFirewallApplicationRule"
-    $NewCollectionFunction = "New-AzFirewallApplicationRuleCollection -Name $SAWFWAppRuleCollName"
+    $NewCollectionFunction = 'New-AzFirewallApplicationRuleCollection -Name ' + $SAWFWAppRuleCollName + '-Priority ' + $Priority + ' -ActionType Allow -Rule'
   }
   elseif ($RuleType -eq 'Network') {
     $NewRuleFunction = "New-AzFirewallNetworkRule"
-    $NewCollectionFunction = "New-AzFirewallNetworkRuleCollection -Name $SAWFWNetRuleCollName"
+    $NewCollectionFunction = 'New-AzFirewallNetworkRuleCollection -Name ' + $SAWFWNetRuleCollName + ' -Priority ' + $Priority + ' -ActionType Allow -Rule'
   }
   else {
     Write-Error -Message "There is a bug inside...me!" -ErrorAction Stop
   }
-  foreach ( $rule in $ConfigRules ) {
-    Write-Host "Creating App Rule for $rule"
-    $Rules += Invoke-Expression "$NewRuleFunction $rule"
+  function New-FWRuleCollection {
+    $RuleArray = foreach ($rule in $ConfigRules) {
+      $result = Invoke-Command "$NewRuleFunction $rule"
+      Write-Host "Invoke command result type: $result.GetType()"
+      $result
+    }
+    Write-Host "RuleArray is: $RuleArray.GetType()"
+    Write-Host "RuleArray count: $RuleArray.count"
+    $RuleArray
   }
-  $RuleCollection = Invoke-Expression "$NewRuleCollectionFunction -Priority $Priority -ActionType Allow -Rule $Rules"
-  return $RuleCollection
+  $RuleCollection = (New-FWRuleCollection)
+  Write-Host "Return Type from New-FWRuleCollection: $RuleCollection.GetType()"
+  Write-Host "LENGTH?: $RuleCollection.count"
+  Write-Host "Contents?: $RuleCollection"
+  $Generated_Collection = Invoke-Expression "$NewCollectionFunction $RuleCollection"
 }
+
 # Create App Rules
-$SAWFWConfigAppRules = Set-RuleCollectionFromConfig -ConfigRules $SAWFWAppRules -RuleType Application
+$SAWFWConfigAppRules = New-RuleCollection -ConfigRules $SAWFWAppRules -RuleType Application
+Write-Host "SAWFWConfigAppRules: $SWFWConfigAppRules"
 if ($Azfw.ApplicationRuleCollections.Name -contains $SAWFWAppRuleCollName) {
   Set-ClassicFWRuleCollection -NewRuleCollection $SAWFWConfigAppRules -ExistingRuleCollection $Azfw.GetApplicationRuleCollectionByName($SAWFWAppRuleCollName) -AzureFirewall $Azfw -RuleType Application
 }
@@ -177,7 +187,7 @@ else {
   Set-ClassicFWRuleCollection -NewRuleCollection $SAWFWConfigAppRules -AzureFirewall $Azfw -RuleType Application
 }
 # Create Network Rules
-$SAWFWConfigNetRules = Set-RuleCollectionFromConfig -ConfigRules $SAWFWNetRules -RuleType Network
+$SAWFWConfigNetRules = New-RuleCollection -ConfigRules $SAWFWNetRules -RuleType Network
 if ($Azfw.NetworkRuleCollections.Name -contains $SAWFWNetRuleCollName) {
   Set-ClassicFWRuleCollection -NewRuleCollection $SAWFWConfigNetRules -ExistingRuleCollection $Azfw.GetNetworkRuleCollectionByName($SAWFWNetRuleCollName) -AzureFirewall $Azfw -RuleType Network
 }
