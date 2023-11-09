@@ -99,37 +99,48 @@ function New-FirewallPolicy {
     [Parameter(Mandatory = $true)]
     [String] $Location,
     [Parameter(Mandatory = $true)]
-    [PSAzureFirewall] $ExistingSAWFW
+    [object] $ExistingSAWFW
   )
-  Write-Host "Creating Firewall Policy... need for compare / create"
-  $NewAZFWPolicy = New-AzFirewallPolicy -Name "$PolicyName-New" -ResourceGroupName $ResourceGroupName -Location $Location
-  $SAWFW_AppRuleArray = foreach ($AppRuleEntry in $SAWFWAppRules) { New-AzFirewallPolicyApplicationRule $AppRuleEntry }
-  $SAWFW_AppRuleColl = New-AzFirewallApplicationRuleCollection -Name $SAWFWAppRuleCollName -Priority 100 -Rule $SAWFW_AppRuleArray -ActionType Allow
-  $SAWFW_NetRuleArray = foreach ($NetRuleEntry in $SAWFWNetRules) { New-AzFirewallPolicyNetworkRule $NetRuleEntry }
-  $SAWFW_NetRuleColl = New-AzFirewallNetworkRuleCollection -Name $SAWFWNetRuleCollName -Priority 100 -Rule $SAWFW_NetRuleArray -ActionType Allow
-  $SAWFW_RCGroup = New-AzFirewallPolicyRuleCollectionGroup -Name "$SAWFWPolicyName-RCGroup" -RuleCollection @($SAWFW_AppRuleColl, $SAWFW_NetRuleColl) -Priority 100 -FirewallPolicyObject $NewAZFWPolicy
-  $NewAZFWPolicy.RuleCollectionGroups = $SAWFW_RCGroup
-  Write-Host "Comparing local Firewall Policy... to that on in Azure named $PolicyName [RG: $ResourceGroupName] (might be naive...)"
-  if (!(Get-AzFirewallPolicy -Name $PolicyName -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue)) {
-    Write-Host "$PolicyName [RG: $ResourceGroupName] not found, deploying our local one!"
-    # Deploy the firewall policy
-    $NewAZFWPolicy.Name = $PolicyName
+  Write-Host "Creating/Replacing $PolicyName Firewall Policy..."
+  Write-Host "Ideally this should compare any existing and not replace if unchanged...but not at present"
+  try {
+    if (Get-AzFirewallPolicy -Name "$PolicyName" -ResourceGroupName $ResourceGroupName -ErrorAction SilentlyContinue) {
+      Write-Host "Found existing Firewall Policy named $PolicyName, removing..."
+      Remove-AzFirewallPolicy -Name "$PolicyName" -ResourceGroupName $ResourceGroupName -Force
+    }
+    $NewAZFWPolicy = New-AzFirewallPolicy -Name "$PolicyName" -ResourceGroupName $ResourceGroupName -Location $Location -Force
+    # FW Application rules
+    $SAWFWAppRuleArray = $SAWFWAppRules | Foreach-Object { 
+      Write-Host "Creating App Rule: $($_.Name)"
+      try {
+        $RULE = New-AzFirewallPolicyApplicationRule @_; $RULE 
+      }
+      catch {
+        Write-Error "Error creating Firewall Policy Application Rule: $_" -ErrorAction Stop
+      }
+    }
+    $SAWFWAppRuleColl = New-AzFirewallPolicyFilterRuleCollection -Name $SAWFWAppRuleCollName -Priority 100 -Rule $SAWFWAppRuleArray -ActionType Allow
+    $SAWFWRCGroupApp = New-AzFirewallPolicyRuleCollectionGroup -Name "$SAWFWPolicyName-RCGroup-App" -Priority 100 -RuleCollection $SAWFWAppRuleColl -FirewallPolicyObject $NewAZFWPolicy
+    # FW Network rules
+    $SAWFWNetRuleArray = $SAWFWNetRules | Foreach-Object { 
+      Write-Host "Creating Net Rule: $($_.Name)"
+      try {
+        $RULE = New-AzFirewallPolicyNetworkRule @_; $RULE 
+      }
+      catch {
+        Write-Error "Error creating Firewall Policy Network Rule: $_" -ErrorAction Stop
+      }
+    }
+    $SAWFWNetRuleColl = New-AzFirewallPolicyFilterRuleCollection -Name $SAWFWNetRuleCollName -Priority 200 -Rule $SAWFWNetRuleArray -ActionType Allow
+    $SAWFWRCGroupNet = New-AzFirewallPolicyRuleCollectionGroup -Name "$SAWFWPolicyName-RCGroup-Net" -Priority 200 -RuleCollection $SAWFWNetRuleColl -FirewallPolicyObject $NewAZFWPolicy
+    
     $ExistingSAWFW.Policy = $NewAZFWPolicy
     Set-AzFirewall -AzureFirewall $ExistingSAWFW
   }
-  elseif (!(Compare-Object -ReferenceObject $ExistingSAWFW.Policy -DifferenceObject $NewAZFWPolicy)) {
-    Write-Host "$PolicyName [RG: $ResourceGroupName] found, differences detected, deploying our local one!"
-    Write-Host "Differences detected:"
-    Compare-Object -ReferenceObject $ExistingSAWFW.Policy -DifferenceObject $NewAZFWPolicy | Format-Table
-    # Deploy the updated firewall policy
-    Remove-AzFirewallPolicy -Name $PolicyName -ResourceGroupName $ResourceGroupName
-    $ExistingSAWFW.FirewallPolicy = $NewAZFWPolicy
-    Set-AzFirewall -AzureFirewall $ExistingSAWFW 
-  }
-  else {
-    Write-Host "$PolicyName [RG: $ResourceGroupName] found, no changes detected, skipping deployment!"
-  }
+  catch {
+    Write-Error "Error creating Firewall Policy: $_" -ErrorAction Stop
+  } 
 }
 
 # Create FW Policy deploying if required
-New-FirewallPolicy -PolicyName $SAWFWPolicyName -ResourceGroupName $SAWResourceGroupName -Location $SAWLocation
+New-FirewallPolicy -PolicyName $SAWFWPolicyName -ResourceGroupName $SAWResourceGroupName -Location $SAWLocation -ExistingSAWFW $Azfw

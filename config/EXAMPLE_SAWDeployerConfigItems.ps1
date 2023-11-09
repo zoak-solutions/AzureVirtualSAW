@@ -36,11 +36,9 @@ $SAWFWNetRuleCollName = "SAWFWNetColl01"
 $SAWFWAppRuleCollName = "SAWFWAppColl01"
 ######################################################
 # SAW HTTP/S outbound Allowed hosts for SAWs as hashtable, no s and a key that meaningfully describes the host
-
-
 $SAWFWAppRules = @(
     @{Name = "windows-update-rule"; FqdnTag = "WindowsUpdate"; SourceAddress = $SAWSubNetRange }
-    @{Name = "AzurVDITagAllow"; FqdnTag = @("WindowsVirtualDesktop", "AzureFrontDoor.Frontend", "AzureMonitor"); SourceAddress = $SAWSubNetRange; Protocol = @("http", "https") }
+    @{Name = "AzureFQDNTagAllows"; FqdnTag = ("AppServiceEnvironment","AzureBackup","AzureKubernetesService","HDInsight","MicrosoftActiveProtectionService","MicrosoftIntune","Windows365","WindowsDiagnostics","WindowsUpdate","WindowsVirtualDesktop","Office365.Exchange.Optimize","Office365.Exchange.Default.Required","Office365.Exchange.Allow.Required","Office365.SharePoint.Optimize","Office365.SharePoint.Default.Required","Office365.Common.Default.NotRequired","Office365.Common.Allow.Required","Office365.Common.Default.Required"); SourceAddress = $SAWSubNetRange }
     @{Name = "google"; SourceAddress = $SAWSubNetRange; Protocol = @("http", "https"); TargetFqdn = "google.com" }
     @{Name = "googleapis"; SourceAddress = $SAWSubNetRange; Protocol = @("http", "https"); TargetFqdn = "googleapis.com" }
     @{Name = "microsoft"; SourceAddress = $SAWSubNetRange; Protocol = @("http", "https"); TargetFqdn = "microsoft.com" }
@@ -66,9 +64,11 @@ $SAWFWNetRules = @(
     @{Name = "Session host monitoring"; SourceAddress = $SAWSubNetRange; Protocol = "TCP"; DestinationAddress = @("168.63.129.16/32"); DestinationPort = @("80", "443") }
     @{Name = "DNS to AzureFW"; SourceAddress = $SAWSubNetRange; Protocol = @("TCP", "UDP"); DestinationAddress = $AzureFWRange; DestinationPort = @("53") }
     @{Name = "azkms.core.windows.net IPs"; SourceAddress = $SAWSubNetRange; Protocol = "TCP"; DestinationAddress = @("20.118.99.224", "40.83.235.53", "23.102.135.246"); DestinationPort = @("1688") }
-    @{Name = "Session host monitoring"; SourceAddress = $SAWSubNetRange; Protocol = "TCP"; DestinationAddress = @("168.63.129.16/32"); DestinationPort = @("80", "443") }
 )
 
+$SAWFWNetRules = @(
+    @{Name = "azkms.core.windows.net IPs"; SourceAddress = $SAWSubNetRange; Protocol = "TCP"; DestinationAddress = @("20.118.99.224/32", "40.83.235.53/32", "23.102.135.246/32"); DestinationPort = @("1688") }
+)
 # Array of SAW users to add to the SAW User Group
 $SAWAccessGroupMembers = @(
     'john.smith@zoak.solutions',
