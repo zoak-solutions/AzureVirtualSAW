@@ -1,1 +1,2 @@
 config/SAWDeployerConfigItems.ps1
+logs/*.log
