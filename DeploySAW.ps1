@@ -14,17 +14,10 @@ $ErrorActionPreference = 'Stop'
 $timestamp = Get-Date -Format o | ForEach-Object { $_ -replace ":", "." }
 $script_name = $MyInvocation.MyCommand.Name
 $script_path = $PSScriptRoot
+$example_config_file = "$(( get-item $PSScriptRoot ).FullName)\config\EXAMPLE_SAWDeployerConfigItems.ps1"
 Start-Transcript -Append "$script_path\logs\$script_name-$timestamp.log"
 try {
     Write-Debug -Message "Script name: $script_name"
-    # Load config items
-    if (!(Test-Path $ConfigFile)) {
-        Write-Error -Message "$ConfigFile not found. Exiting." -ErrorAction Stop
-    }
-    else {
-        . $ConfigFile
-    }
-
     Write-Host "### Start at: $(Get-Date) ###"
     # Function to copy a file removing prefix in filname and replacing with a new prefix
     function Copy-FileWithNewPrefix {
@@ -42,18 +35,18 @@ try {
         Copy-Item -Path $SourceFile -Destination $NewFileName
     }
 
-    # Check for SAWDeployerConfigItems.ps1
-    if (!(Test-Path .\config\SAWDeployerConfigItems.ps1) -and (Test-Path .\config\EXAMPLE_SAWDeployerConfigItems.ps1)) {
+    # Check for ConfigFile.ps1
+    if (!(Test-Path $ConfigFile) -and (Test-Path $example_config_file)) {
         write-host "Only the EXAMPLE_SAWDeployerConfigItems.ps1 file found in ./config, shall I make a copy of this as ./config/SAWDeployerConfigItems.ps1 for use?:"  -Confirm
         if ($confirmation -eq 'y') {
             Copy-FileWithNewPrefix .\config\EXAMPLE_SAWDeployerConfigItems.ps1 .\config\SAWDeployerConfigItems.ps1 'EXAMPLE_' ''
         }
         else {
-            Write-Error -Message "No appropriate config file in ./config dir. Exiting." -ErrorAction Stop
+            Write-Error -Message "No appropriate config file in ./config dir. Exiting. Check source repo for further details: https://github.com/zoak-solutions/AzureVirtualSAW" -ErrorAction Stop
         }
     }
     else {
-        . .\config\SAWDeployerConfigItems.ps1
+        . $ConfigFile
     }
 
     function Install-DependentModule {
@@ -98,7 +91,7 @@ try {
 
     # MAIN
     Write-Host "Checking for required modules..."
-    $ModuleDependencies = @('Az')
+    $ModuleDependencies = @('Az', 'Microsoft.Graph.Beta')
     Write-Host("Current Execution Policy: ")
     Get-ExecutionPolicy -Scope CurrentUser
     foreach ($Module in $ModuleDependencies) {

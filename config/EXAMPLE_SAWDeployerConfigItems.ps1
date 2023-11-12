@@ -17,6 +17,17 @@ $SAWAppGroupName = 'saw_app_group'
 $SAWUserGroupName = 'saw_user_group'
 $SAWVDIGroupRole = 'Desktop Virtualization User'
 $SAWAppGroupResourceType = 'Microsoft.DesktopVirtualization/applicationGroups'
+$SAWDynamicDeviceGroup = 'saw_dynamic_device_group'
+$SAWVMNamePrefix = 'saw-avd-vm'
+$SAWVMTagName = 'AVD'
+$SAWVMTag = @{$SAWVMTagName = $SAWVMNamePrefix }
+$SAWDynamicDeviceGroupMembershipRule = "tags/$SAWVMTagName -eq '$SAWVMNamePrefix'"
+$SAWCustomRdpProperties = "drivestoredirect:s:*;audiomode:i:0;videoplaybackmode:i:1;redirectclipboard:i:1;redirectprinters:i:1;devicestoredirect:s:*;redirectcomports:i:1;redirectsmartcards:i:1;usbdevicestoredirect:s:*;enablecredsspsupport:i:1;redirectwebauthn:i:1;use multimon:i:1;enablerdsaadauth:i:1;" # https://learn.microsoft.com/en-us/azure/virtual-desktop/rdp-properties
+$AVDEnterpriseApplicationsAndRoles = # https://learn.microsoft.com/en-us/azure/virtual-desktop/configure-single-sign-on?WT.mc_id=Portal-Microsoft_Azure_WVD#enable-microsoft-entra-authentication-for-rdp
+@(
+    @{ "AppID" = "a4a365df-50f1-4397-bc59-1a1564b8bb9c"; "AppRole" = "Default Access" }
+    @{ "AppID" = "270efc09-cd0d-444b-a71f-39af4910ec45"; "AppRole" = "Default Access" }
+)
 
 # Network config
 $SAWVnetName = 'SAWVnet'

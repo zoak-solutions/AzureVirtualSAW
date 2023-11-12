@@ -36,17 +36,21 @@ try {
     az group show --name $SAWResourceGroupName
 
     # Create a Host Pool
-    $parameters = @{
-        Name                  = $SAWHostPoolName
-        ResourceGroupName     = $SAWResourceGroupName
-        HostPoolType          = $SAWHostPoolType
-        LoadBalancerType      = $SAWLoadBalancerType
-        PreferredAppGroupType = $SAWPreferredAppGroupType
-        MaxSessionLimit       = $SAWMaxSessionLimit
-        Location              = $SAWLocation
-    }
+
     # Create host pool if it doesn't exist
     if (!(Get-AzWvdHostPool -Name $SAWHostPoolName -ResourceGroupName $SAWResourceGroupName -ErrorAction SilentlyContinue)) {
+        $parameters = @{
+            Name                  = $SAWHostPoolName
+            ResourceGroupName     = $SAWResourceGroupName
+            HostPoolType          = $SAWHostPoolType
+            LoadBalancerType      = $SAWLoadBalancerType
+            PreferredAppGroupType = $SAWPreferredAppGroupType
+            MaxSessionLimit       = $SAWMaxSessionLimit
+            Location              = $SAWLocation
+            CustomRdpProperty     = $SAWCustomRdpProperty
+            #[-VMTemplate <String>]
+
+        }
         New-AzWvdHostPool @parameters
     }
     else {
@@ -114,22 +118,42 @@ try {
         }
         New-AzADGroup @parameters
     }
+    else {
+        Write-Host "User Group $SAWUserGroupName already exists, skipping"
+    }
 
     # Assign Entra Group to an Application Group
     $userGroupId = (Get-AzADGroup -DisplayName $SAWUserGroupName).Id
-    $parameters = @{
-        ObjectID           = $userGroupId
-        ResourceName       = $SAWAppGroupName
-        ResourceGroupName  = $SAWResourceGroupName
-        RoleDefinitionName = $SAWVDIGroupRole
-        ResourceType       = $SAWAppGroupResourceType
-    }
     # Assign user group to application group if it isn't already assigned
     if (!(Get-AzRoleAssignment -ResourceGroupName $SAWResourceGroupName -ObjectID $userGroupId -RoleDefinitionName $SAWVDIGroupRole -ResourceName $SAWAppGroupName -ResourceType $SAWAppGroupResourceType -ErrorAction SilentlyContinue)) {
+        $parameters = @{
+            ObjectID           = $userGroupId
+            ResourceName       = $SAWAppGroupName
+            ResourceGroupName  = $SAWResourceGroupName
+            RoleDefinitionName = $SAWVDIGroupRole
+            ResourceType       = $SAWAppGroupResourceType
+        }
         New-AzRoleAssignment @parameters
     }
     else {
         Write-Host "User Group $SAWUserGroupName already assigned to Application Group $SAWAppGroupName"
+    }
+
+    # Create a dynamic Entra device group for SAWS
+    if (!(Get-AzADGroup -DisplayName $SAWDynamicDeviceGroupName -ErrorAction SilentlyContinue)) {
+        $parameters = @{
+            DisplayName                   = $SAWDynamicDeviceGroupName
+            MailNickname                  = $SAWDynamicDeviceGroupName
+            SecurityEnabled               = $true
+            MailEnabled                   = $false
+            GroupType                     = "DynamicMembership"
+            MembershipRule                = $SAWDynamicDeviceGroupMembershipRule
+            MembershipRuleProcessingState = "On"
+        }
+        New-AzADGroup @parameters
+    }
+    else {
+        Write-Host "Device Group $SAWDeviceGroupName already exists, skipping"
     }
 } # End try
 catch {
