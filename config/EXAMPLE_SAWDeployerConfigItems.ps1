@@ -17,6 +17,17 @@ $SAWAppGroupName = 'saw_app_group'
 $SAWUserGroupName = 'saw_user_group'
 $SAWVDIGroupRole = 'Desktop Virtualization User'
 $SAWAppGroupResourceType = 'Microsoft.DesktopVirtualization/applicationGroups'
+$SAWDynamicDeviceGroup = 'saw_dynamic_device_group'
+$SAWVMNamePrefix = 'saw-avd-vm'
+$SAWVMTagName = 'AVD'
+$SAWVMTag = @{$SAWVMTagName = $SAWVMNamePrefix }
+$SAWDynamicDeviceGroupMembershipRule = "tags/$SAWVMTagName -eq '$SAWVMNamePrefix'"
+$SAWCustomRdpProperties = "drivestoredirect:s:*;audiomode:i:0;videoplaybackmode:i:1;redirectclipboard:i:1;redirectprinters:i:1;devicestoredirect:s:*;redirectcomports:i:1;redirectsmartcards:i:1;usbdevicestoredirect:s:*;enablecredsspsupport:i:1;redirectwebauthn:i:1;use multimon:i:1;enablerdsaadauth:i:1;" # https://learn.microsoft.com/en-us/azure/virtual-desktop/rdp-properties
+$AVDEnterpriseApplicationsAndRoles = # https://learn.microsoft.com/en-us/azure/virtual-desktop/configure-single-sign-on?WT.mc_id=Portal-Microsoft_Azure_WVD#enable-microsoft-entra-authentication-for-rdp
+@(
+    @{ "AppID" = "a4a365df-50f1-4397-bc59-1a1564b8bb9c"; "AppRole" = "Default Access" }
+    @{ "AppID" = "270efc09-cd0d-444b-a71f-39af4910ec45"; "AppRole" = "Default Access" }
+)
 
 # Network config
 $SAWVnetName = 'SAWVnet'
@@ -28,8 +39,10 @@ $SAWRouteName = "SAW-Route"
 $AzureFWName = 'AzureSAWFW'
 $AzureFWSubNetName = 'AzureFirewallSubnet'
 $AzureFWRange = "10.0.99.0/26"
+$AzureDNSResolverIP = @("168.63.129.16")
 $AzureFWAllocationMethod = 'Static'
 $AzureFWSKU = "Standard"
+$ThreatIntelMode = "Deny"
 $AzureFWPublicIPName = "$AzureFWName-PubIP"
 $SAWFWPolicyName = "SAWFWPolicy"
 $SAWFWNetRuleCollName = "SAWFWNetColl01"
@@ -37,8 +50,7 @@ $SAWFWAppRuleCollName = "SAWFWAppColl01"
 ######################################################
 # SAW HTTP/S outbound Allowed hosts for SAWs as hashtable, no s and a key that meaningfully describes the host
 $SAWFWAppRules = @(
-    @{Name = "windows-update-rule"; FqdnTag = "WindowsUpdate"; SourceAddress = $SAWSubNetRange }
-    @{Name = "AzureFQDNTagAllows"; FqdnTag = ("AppServiceEnvironment","AzureBackup","AzureKubernetesService","HDInsight","MicrosoftActiveProtectionService","MicrosoftIntune","Windows365","WindowsDiagnostics","WindowsUpdate","WindowsVirtualDesktop","Office365.Exchange.Optimize","Office365.Exchange.Default.Required","Office365.Exchange.Allow.Required","Office365.SharePoint.Optimize","Office365.SharePoint.Default.Required","Office365.Common.Default.NotRequired","Office365.Common.Allow.Required","Office365.Common.Default.Required"); SourceAddress = $SAWSubNetRange }
+    @{Name = "AzureFQDNTagAllows"; FqdnTag = ("AppServiceEnvironment", "AzureBackup", "AzureKubernetesService", "HDInsight", "MicrosoftActiveProtectionService", "MicrosoftIntune", "Windows365", "WindowsDiagnostics", "WindowsUpdate", "WindowsVirtualDesktop", "Office365.Exchange.Optimize", "Office365.Exchange.Default.Required", "Office365.Exchange.Allow.Required", "Office365.SharePoint.Optimize", "Office365.SharePoint.Default.Required", "Office365.Common.Default.NotRequired", "Office365.Common.Allow.Required", "Office365.Common.Default.Required"); SourceAddress = $SAWSubNetRange }
     @{Name = "google"; SourceAddress = $SAWSubNetRange; Protocol = @("http", "https"); TargetFqdn = "google.com" }
     @{Name = "googleapis"; SourceAddress = $SAWSubNetRange; Protocol = @("http", "https"); TargetFqdn = "googleapis.com" }
     @{Name = "microsoft"; SourceAddress = $SAWSubNetRange; Protocol = @("http", "https"); TargetFqdn = "microsoft.com" }
@@ -64,7 +76,6 @@ $SAWFWNetRules = @(
     @{Name = "Session host monitoring"; SourceAddress = $SAWSubNetRange; Protocol = "TCP"; DestinationAddress = @("168.63.129.16/32"); DestinationPort = @("80", "443") }
     @{Name = "DNS to AzureFW"; SourceAddress = $SAWSubNetRange; Protocol = @("TCP", "UDP"); DestinationAddress = $AzureFWRange; DestinationPort = @("53") }
     @{Name = "azkms.core.windows.net IPs"; SourceAddress = $SAWSubNetRange; Protocol = "TCP"; DestinationAddress = @("20.118.99.224", "40.83.235.53", "23.102.135.246"); DestinationPort = @("1688") }
-    @{Name = "Session host monitoring"; SourceAddress = $SAWSubNetRange; Protocol = "TCP"; DestinationAddress = @("168.63.129.16/32"); DestinationPort = @("80", "443") }
 )
 
 # Array of SAW users to add to the SAW User Group
