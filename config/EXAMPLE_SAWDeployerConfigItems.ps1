@@ -36,11 +36,9 @@ $SAWFWNetRuleCollName = "SAWFWNetColl01"
 $SAWFWAppRuleCollName = "SAWFWAppColl01"
 ######################################################
 # SAW HTTP/S outbound Allowed hosts for SAWs as hashtable, no s and a key that meaningfully describes the host
-
-
 $SAWFWAppRules = @(
     @{Name = "windows-update-rule"; FqdnTag = "WindowsUpdate"; SourceAddress = $SAWSubNetRange }
-    @{Name = "AzurVDITagAllow"; FqdnTag = @("WindowsVirtualDesktop", "AzureFrontDoor.Frontend", "AzureMonitor"); SourceAddress = $SAWSubNetRange; Protocol = @("http", "https") }
+    @{Name = "AzureFQDNTagAllows"; FqdnTag = ("AppServiceEnvironment","AzureBackup","AzureKubernetesService","HDInsight","MicrosoftActiveProtectionService","MicrosoftIntune","Windows365","WindowsDiagnostics","WindowsUpdate","WindowsVirtualDesktop","Office365.Exchange.Optimize","Office365.Exchange.Default.Required","Office365.Exchange.Allow.Required","Office365.SharePoint.Optimize","Office365.SharePoint.Default.Required","Office365.Common.Default.NotRequired","Office365.Common.Allow.Required","Office365.Common.Default.Required"); SourceAddress = $SAWSubNetRange }
     @{Name = "google"; SourceAddress = $SAWSubNetRange; Protocol = @("http", "https"); TargetFqdn = "google.com" }
     @{Name = "googleapis"; SourceAddress = $SAWSubNetRange; Protocol = @("http", "https"); TargetFqdn = "googleapis.com" }
     @{Name = "microsoft"; SourceAddress = $SAWSubNetRange; Protocol = @("http", "https"); TargetFqdn = "microsoft.com" }
