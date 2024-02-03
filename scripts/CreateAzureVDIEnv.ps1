@@ -33,7 +33,7 @@ try {
     else {
         Write-Host "Resource Group $SAWResourceGroupName already exists"
     }
-    az group show --name $SAWResourceGroupName
+    az group show --name $SAWResourceGroupName --query  "[?location=='''$SAWLocation''']"
 
     # Create a Host Pool
 
