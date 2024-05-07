@@ -48,8 +48,7 @@ try {
             MaxSessionLimit       = $SAWMaxSessionLimit
             Location              = $SAWLocation
             CustomRdpProperty     = $SAWCustomRdpProperty
-            #[-VMTemplate <String>]
-
+            #[-VMTemplate String]
         }
         New-AzWvdHostPool @parameters
     }
